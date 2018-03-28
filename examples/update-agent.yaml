@@ -1,7 +1,7 @@
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
-  name: container-linux-update-agent
+  name: cosmic-update-agent
   namespace: reboot-coordinator
 spec:
   updateStrategy:
@@ -11,28 +11,31 @@ spec:
   template:
     metadata:
       labels:
-        app: container-linux-update-agent
+        app: cosmic-update-agent
     spec:
+      serviceAccountName: default
       containers:
+        # XXX: hackasaurus 🦖 until we setup a proper imagestream for this
       - name: update-agent
-        image: quay.io/coreos/container-linux-update-operator:v0.6.0
+        image: registry.fedoraproject.org/fedora:27
+        imagePullPolicy: IfNotPresent
         command:
-        - "/bin/update-agent"
+        - "bash"
+        - "-c"
+        # so we don't get ETXTBSY when overwriting binary while it's running
+        - "cp /usr/local/bin/update-agent{,-run} && /usr/local/bin/update-agent-run -node localhost"
+        # XXX: 🦖 so that we can authenticate against host system dbus.
+        # generated uids won't auth otherwise
+        securityContext:
+          runAsUser: 0
         volumeMounts:
           - mountPath: /var/run/dbus
             name: var-run-dbus
-          - mountPath: /etc/coreos
-            name: etc-coreos
-          - mountPath: /usr/share/coreos
-            name: usr-share-coreos
           - mountPath: /etc/os-release
             name: etc-os-release
+          - mountPath: /usr/local/bin/update-agent # XXX: 🦖
+            name: update-agent
         env:
-        # read by update-agent as the node name to manage reboots for
-        - name: UPDATE_AGENT_NODE
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
         - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
@@ -45,12 +48,9 @@ spec:
       - name: var-run-dbus
         hostPath:
           path: /var/run/dbus
-      - name: etc-coreos
+      - name: update-agent
         hostPath:
-          path: /etc/coreos
-      - name: usr-share-coreos
-        hostPath:
-          path: /usr/share/coreos
+          path: /usr/local/bin/update-agent
       - name: etc-os-release
         hostPath:
           path: /etc/os-release
