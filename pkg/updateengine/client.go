@@ -17,23 +17,26 @@ package updateengine
 import (
 	"fmt"
 	"os"
+	"time"
 	"strconv"
 
+	"github.com/golang/glog"
 	"github.com/godbus/dbus"
 )
 
 const (
-	dbusPath            = "/com/coreos/update1"
-	dbusInterface       = "com.coreos.update1.Manager"
-	dbusMember          = "StatusUpdate"
-	dbusMemberInterface = dbusInterface + "." + dbusMember
-	signalBuffer        = 32 // TODO(bp): What is a reasonable value here?
+	dbusName          = "org.projectatomic.rpmostree1"
+	dbusSysroot       = "/org/projectatomic/rpmostree1/Sysroot"
+	dbusIfaceOS       = "org.projectatomic.rpmostree1.OS"
+	dbusIfaceSysroot  = "org.projectatomic.rpmostree1.Sysroot"
+	signalBuffer      = 32 // TODO(bp): What is a reasonable value here?
+	//statePollInterval = 1 * time.Hour
+	statePollInterval = 15 * time.Second // for hacking
 )
 
 type Client struct {
-	conn   *dbus.Conn
-	object dbus.BusObject
-	ch     chan *dbus.Signal
+	conn  *dbus.Conn
+	osPath dbus.ObjectPath
 }
 
 func New() (*Client, error) {
@@ -58,20 +61,21 @@ func New() (*Client, error) {
 		return nil, err
 	}
 
-	c.object = c.conn.Object("com.coreos.update1", dbus.ObjectPath(dbusPath))
-
-	// Setup the filter for the StatusUpdate signals
-	match := fmt.Sprintf("type='signal',interface='%s',member='%s'", dbusInterface, dbusMember)
-
-	call := c.conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, match)
-	if call.Err != nil {
-		return nil, call.Err
+	/* find booted OS */
+	sysroot := c.conn.Object(dbusName, dbus.ObjectPath(dbusSysroot))
+	prop, err := sysroot.GetProperty(dbusMember(dbusIfaceSysroot, "Booted"))
+	if err != nil {
+		return nil, err
 	}
 
-	c.ch = make(chan *dbus.Signal, signalBuffer)
-	c.conn.Signal(c.ch)
-
+	c.osPath = prop.Value().(dbus.ObjectPath)
+	glog.Infof("Booted OS path is %v", c.osPath)
 	return c, nil
+}
+
+// godbus works on interface.member notation
+func dbusMember(iface, member string) string {
+	return fmt.Sprintf("%s.%s", iface, member)
 }
 
 func (c *Client) Close() error {
@@ -81,52 +85,49 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// ReceiveStatuses receives signal messages from dbus and sends them as Statues
+// ReceiveStatuses receives signal messages from dbus and sends them as Statuses
 // on the rcvr channel, until the stop channel is closed. An attempt is made to
 // get the initial status and send it on the rcvr channel before receiving
 // starts.
 func (c *Client) ReceiveStatuses(rcvr chan Status, stop <-chan struct{}) {
-	// if there is an error getting the current status, ignore it and just
+	// if there is an error getting the current status, just log it and
 	// move onto the main loop.
-	st, _ := c.GetStatus()
-	rcvr <- st
-
-	for {
-		select {
-		case <-stop:
-			return
-		case signal := <-c.ch:
-			rcvr <- NewStatus(signal.Body)
-		}
+	st, err := c.GetStatus()
+	if err != nil {
+		glog.Warningf("error getting rpm-ostree status: %v", err)
+	} else {
+		rcvr <- st
 	}
-}
 
-func (c *Client) RebootNeededSignal(rcvr chan Status, stop <-chan struct{}) {
+	// XXX: We could probably increase the interval even more if we use
+	// filesystem notifications instead if we want to narrow the window between
+	// deployment staging and reboot.
+	t := time.Tick(statePollInterval)
 	for {
 		select {
 		case <-stop:
 			return
-		case signal := <-c.ch:
-			s := NewStatus(signal.Body)
-			if s.CurrentOperation == UpdateStatusUpdatedNeedReboot {
-				rcvr <- s
+		case <-t:
+			st, err := c.GetStatus()
+			if err != nil {
+				glog.Warningf("error getting rpm-ostree status: %v", err)
+			} else {
+				rcvr <- st
 			}
 		}
 	}
 }
 
-// GetStatus gets the current status from update_engine
+// GetStatus gets the current status from rpm-ostree
 func (c *Client) GetStatus() (Status, error) {
-	call := c.object.Call(dbusInterface+".GetStatus", 0)
-	if call.Err != nil {
-		return Status{}, call.Err
-	}
-	return NewStatus(call.Body), nil
-}
+	glog.Info("Getting status from rpm-ostree")
 
-// AttemptUpdate will trigger an update if available. This is an asynchronous
-// call - it returns immediately.
-func (c *Client) AttemptUpdate() error {
-	call := c.object.Call(dbusInterface+".AttemptUpdate", 0)
-	return call.Err
+	bootedOS := c.conn.Object(dbusName, c.osPath)
+	prop, err := bootedOS.GetProperty(dbusMember(dbusIfaceOS, "CachedUpdate"))
+	if err != nil {
+		return Status{}, err
+	}
+
+	dict := prop.Value().(map[string]dbus.Variant)
+	return NewStatus(dict), nil
 }

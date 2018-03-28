@@ -187,7 +187,7 @@ func (k *Kontroller) Run(stop <-chan struct{}) error {
 		go wait.Until(k.legacyLabeler, reconciliationPeriod, stop)
 	}
 
-	// Before doing anytihng else, make sure the associated agent daemonset is
+	// Before doing anything else, make sure the associated agent daemonset is
 	// ready if it's our responsibility.
 	if k.manageAgent && k.agentImageRepo != "" {
 		// create or update the update-agent daemonset

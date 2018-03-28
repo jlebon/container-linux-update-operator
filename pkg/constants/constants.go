@@ -42,15 +42,12 @@ const (
 	// It is possible, but extremely unlike for it to be "unknown status".
 	AnnotationStatus = Prefix + "status"
 
-	// Key set by the update-agent to LAST_CHECKED_TIME reported by update_engine.
-	//
-	// It is zero if an update has never been checked for, or a UNIX timestamp.
+	// rpm-ostree CachedUpdate["update-timestamp"]
 	AnnotationLastCheckedTime = Prefix + "last-checked-time"
-
-	// Key set by the update-agent to NEW_VERSION reported by update_engine.
-	//
-	// It is an opaque string, but might be semver.
+	// rpm-ostree CachedUpdate["version"]
 	AnnotationNewVersion = Prefix + "new-version"
+	// rpm-ostree CachedUpdate["checksum"]
+	AnnotationNewChecksum = Prefix + "new-checksum"
 
 	// Keys set to true when the operator is waiting for configured annotation
 	// before and after the reboot repectively
