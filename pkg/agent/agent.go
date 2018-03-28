@@ -50,10 +50,10 @@ func New(node string, reapTimeout time.Duration) (*Klocksmith, error) {
 	// node interface
 	nc := kc.CoreV1().Nodes()
 
-	// set up update_engine client
+	// set up rpm-ostree client
 	ue, err := updateengine.New()
 	if err != nil {
-		return nil, fmt.Errorf("error establishing connection to update_engine dbus: %v", err)
+		return nil, fmt.Errorf("error establishing connection to rpm-ostree dbus: %v", err)
 	}
 
 	// set up login1 client for our eventual reboot
@@ -65,8 +65,9 @@ func New(node string, reapTimeout time.Duration) (*Klocksmith, error) {
 	return &Klocksmith{node, kc, nc, ue, lc, reapTimeout}, nil
 }
 
-// Run starts the agent to listen for an update_engine reboot signal and react
-// by draining pods and rebooting. Runs until the stop channel is closed.
+// Run starts the agent to listen for an rpm-ostree staged signal and react
+// by draining pods and rebooting once the operator gives the go-ahead. Runs
+// until the stop channel is closed.
 func (k *Klocksmith) Run(stop <-chan struct{}) {
 	glog.V(5).Info("Starting agent")
 
@@ -81,13 +82,15 @@ func (k *Klocksmith) Run(stop <-chan struct{}) {
 // process performs the agent reconciliation to reboot the node or stops when
 // the stop channel is closed.
 func (k *Klocksmith) process(stop <-chan struct{}) error {
-	glog.Info("Setting info labels")
-	if err := k.setInfoLabels(); err != nil {
-		return fmt.Errorf("failed to set node info: %v", err)
-	}
 
-	// set coreos.com/update1/reboot-in-progress=false and
-	// coreos.com/update1/reboot-needed=false
+	// XXX: add support for ostree
+	//glog.Info("Setting info labels")
+	//if err := k.setInfoLabels(); err != nil {
+	//	return fmt.Errorf("failed to set node info: %v", err)
+	//}
+
+	// set coreos.com/update1/reboot-in-progress=false
+	// and coreos.com/update1/reboot-needed=false
 	anno := map[string]string{
 		constants.AnnotationRebootInProgress: constants.False,
 		constants.AnnotationRebootNeeded:     constants.False,
@@ -112,7 +115,8 @@ func (k *Klocksmith) process(stop <-chan struct{}) error {
 		return err
 	}
 
-	// watch update engine for status updates
+	// poll rpm-ostree for status updates
+	// and set needs-reboot once we detect a staged deployment
 	go k.watchUpdateStatus(k.updateStatusCallback, stop)
 
 	// block until constants.AnnotationOkToReboot is set
@@ -184,29 +188,30 @@ func (k *Klocksmith) process(stop <-chan struct{}) error {
 	glog.Info("Node drained, rebooting")
 
 	// reboot
-	k.lc.Reboot(false)
+	//k.lc.Reboot(false) // testing this in an `oc cluster up`, so let's stop short of rebooting
 
 	// cross fingers
 	sleepOrDone(24*7*time.Hour, stop)
 	return nil
 }
 
-// updateStatusCallback receives Status messages from update engine. If the
-// status is UpdateStatusUpdatedNeedReboot, indicate that with a label on our
+// updateStatusCallback receives Status messages from rpm-ostree. If the
+// status is RpmOstreeUpdateStaged, indicate that with a label on our
 // node.
 func (k *Klocksmith) updateStatusCallback(s updateengine.Status) {
-	glog.Info("Updating status")
+	glog.Infof("Updating status: %#v", s)
 	// update our status
 	anno := map[string]string{
-		constants.AnnotationStatus:          s.CurrentOperation,
+		constants.AnnotationStatus:          s.CurrentStatus,
 		constants.AnnotationLastCheckedTime: fmt.Sprintf("%d", s.LastCheckedTime),
 		constants.AnnotationNewVersion:      s.NewVersion,
+		constants.AnnotationNewChecksum:      s.NewChecksum,
 	}
 
 	labels := map[string]string{}
 
 	// indicate we need a reboot
-	if s.CurrentOperation == updateengine.UpdateStatusUpdatedNeedReboot {
+	if s.CurrentStatus == updateengine.RpmOstreeUpdateStaged {
 		glog.Info("Indicating a reboot is needed")
 		anno[constants.AnnotationRebootNeeded] = constants.True
 		labels[constants.LabelRebootNeeded] = constants.True
@@ -223,6 +228,7 @@ func (k *Klocksmith) updateStatusCallback(s updateengine.Status) {
 }
 
 // setInfoLabels labels our node with helpful info about Container Linux.
+// XXX: port to ostree
 func (k *Klocksmith) setInfoLabels() error {
 	vi, err := k8sutil.GetVersionInfo()
 	if err != nil {
@@ -243,17 +249,17 @@ func (k *Klocksmith) setInfoLabels() error {
 }
 
 func (k *Klocksmith) watchUpdateStatus(update func(s updateengine.Status), stop <-chan struct{}) {
-	glog.Info("Beginning to watch update_engine status")
+	glog.Info("Beginning to watch rpm-ostree status")
 
-	oldOperation := ""
+	oldStatus := ""
 	ch := make(chan updateengine.Status, 1)
 
 	go k.ue.ReceiveStatuses(ch, stop)
 
 	for status := range ch {
-		if status.CurrentOperation != oldOperation && update != nil {
+		if status.CurrentStatus != oldStatus && update != nil {
 			update(status)
-			oldOperation = status.CurrentOperation
+			oldStatus = status.CurrentStatus
 		}
 	}
 }
@@ -278,7 +284,7 @@ func (k *Klocksmith) waitForOkToReboot() error {
 		return fmt.Errorf("failed to watch self node (%q): %v", k.node, err)
 	}
 
-	// hopefully 24 hours is enough time between indicating we need a
+	// hopefully 24 hours is enough time between us indicating we need a
 	// reboot and the controller telling us to do it
 	ev, err := watch.Until(time.Hour*24, watcher, k8sutil.NodeAnnotationCondition(shouldRebootSelector))
 	if err != nil {
@@ -304,6 +310,7 @@ func (k *Klocksmith) waitForNotOkToReboot() error {
 		return fmt.Errorf("failed to get self node (%q): %v", k.node, err)
 	}
 
+	// See below for why "!= True"
 	if n.Annotations[constants.AnnotationOkToReboot] != constants.True {
 		return nil
 	}

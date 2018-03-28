@@ -16,47 +16,50 @@ package updateengine
 
 import (
 	"fmt"
+
+	"github.com/godbus/dbus"
 )
 
-// The possible update statuses returned from the update engine
-//
-// These correspond to current operation values exposed over DBus and defined by `update_engine`:
-// https://github.com/coreos/update_engine/blob/v0.4.3/src/update_engine/update_attempter.h#L34-L43
 const (
-	UpdateStatusIdle                = "UPDATE_STATUS_IDLE"
-	UpdateStatusCheckingForUpdate   = "UPDATE_STATUS_CHECKING_FOR_UPDATE"
-	UpdateStatusUpdateAvailable     = "UPDATE_STATUS_UPDATE_AVAILABLE"
-	UpdateStatusDownloading         = "UPDATE_STATUS_DOWNLOADING"
-	UpdateStatusVerifying           = "UPDATE_STATUS_VERIFYING"
-	UpdateStatusFinalizing          = "UPDATE_STATUS_FINALIZING"
-	UpdateStatusUpdatedNeedReboot   = "UPDATE_STATUS_UPDATED_NEED_REBOOT"
-	UpdateStatusReportingErrorEvent = "UPDATE_STATUS_REPORTING_ERROR_EVENT"
+	RpmOstreeUpdateNone             = "RPM_OSTREE_UPDATE_NONE"
+	RpmOstreeUpdateAvailable        = "RPM_OSTREE_UPDATE_AVAILABLE"
+	RpmOstreeUpdateStaged           = "RPM_OSTREE_UPDATE_STAGED"
 )
 
 type Status struct {
-	LastCheckedTime  int64
-	Progress         float64
-	CurrentOperation string
-	NewVersion       string
-	NewSize          int64
+	CurrentStatus string
+	LastCheckedTime uint64
+	// Let's just proxy "version" and "checksum" for now. AFAICT, this is only
+	// for the benefit of a sysadmin doing `oc describe node`.
+	NewVersion string
+	NewChecksum string
 }
 
-func NewStatus(body []interface{}) (s Status) {
-	s.LastCheckedTime = body[0].(int64)
-	s.Progress = body[1].(float64)
-	s.CurrentOperation = body[2].(string)
-	s.NewVersion = body[3].(string)
-	s.NewSize = body[4].(int64)
+func NewStatus(cachedUpdate map[string]dbus.Variant) (s Status) {
 
-	return
+	if len(cachedUpdate) == 0 {
+		return Status{CurrentStatus: RpmOstreeUpdateNone}
+	}
+
+	checksum := cachedUpdate["checksum"].Value().(string)
+	lastChecked := cachedUpdate["update-timestamp"].Value().(uint64)
+	// convert to seconds to be easier to consume
+	lastChecked /= 1000000
+
+	versionProp, ok := cachedUpdate["version"]
+	var version string
+	if ok {
+		version = versionProp.Value().(string)
+	}
+
+	staged := cachedUpdate["staged"].Value().(bool)
+	if !staged {
+		return Status{RpmOstreeUpdateAvailable, lastChecked, version, checksum}
+	}
+	return Status{RpmOstreeUpdateStaged, lastChecked, version, checksum}
 }
 
 func (s *Status) String() string {
-	return fmt.Sprintf("LastCheckedTime=%v Progress=%v CurrentOperation=%q NewVersion=%v NewSize=%v",
-		s.LastCheckedTime,
-		s.Progress,
-		s.CurrentOperation,
-		s.NewVersion,
-		s.NewSize,
-	)
+	return fmt.Sprintf("CurrentStatus=%s LastChecked=%d NewVersion=%s NewChecksum=%s",
+	                   s.CurrentStatus, s.LastCheckedTime, s.NewVersion, s.NewChecksum)
 }
