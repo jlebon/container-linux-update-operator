@@ -80,5 +80,6 @@ const (
 	AgentVersion = Prefix + "agent-version"
 
 	// The default repo/image WITHOUT version tag to use for the agent
-	DefaultAgentImageRepo = "quay.io/coreos/container-linux-update-operator"
+	DefaultAgentImageRepo = "quay.io/spiketesting/atomic-update-operator"
+	//DefaultAgentImageRepo = "quay.io/coreos/container-linux-update-operator"
 )
