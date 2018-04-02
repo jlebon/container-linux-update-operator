@@ -1,38 +1,26 @@
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
-  name: cosmic-update-operator
+  name: atomic-update-operator
   namespace: reboot-coordinator
 spec:
   replicas: 1
   template:
     metadata:
       labels:
-        app: cosmic-update-operator
+        app: atomic-update-operator
     spec:
       containers:
-        # XXX: hackasaurus 🦖 until we setup a proper imagestream for this
       - name: update-operator
-        image: registry.fedoraproject.org/fedora:27
-        imagePullPolicy: IfNotPresent
+        image: quay.io/spiketesting/atomic-update-operator:v0.0.0
         command:
-        - "bash"
-        - "-c"
-        # so we don't get ETXTBSY when overwriting binary while it's running
-        - "cp /usr/local/bin/update-operator /var/tmp && /var/tmp/update-operator"
+        - "/bin/update-operator"
         env:
         - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        volumeMounts:
-          - mountPath: /usr/local/bin/update-operator # XXX: 🦖
-            name: update-operator
       tolerations:
       - key: node-role.kubernetes.io/master
         operator: Exists
         effect: NoSchedule
-      volumes:
-      - name: update-operator
-        hostPath:
-          path: /usr/local/bin/update-operator
