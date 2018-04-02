@@ -1,7 +1,7 @@
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
-  name: cosmic-update-agent
+  name: atomic-update-agent
   namespace: reboot-coordinator
 spec:
   updateStrategy:
@@ -11,21 +11,15 @@ spec:
   template:
     metadata:
       labels:
-        app: cosmic-update-agent
+        app: atomic-update-agent
     spec:
       serviceAccountName: default
       containers:
-        # XXX: hackasaurus 🦖 until we setup a proper imagestream for this
       - name: update-agent
-        image: registry.fedoraproject.org/fedora:27
+        image: quay.io/spiketesting/atomic-update-operator:v0.0.0
         imagePullPolicy: IfNotPresent
         command:
-        - "bash"
-        - "-c"
-        # so we don't get ETXTBSY when overwriting binary while it's running
-        - "cp /usr/local/bin/update-agent{,-run} && /usr/local/bin/update-agent-run -node localhost"
-        # XXX: 🦖 so that we can authenticate against host system dbus.
-        # generated uids won't auth otherwise
+        - "/bin/update-agent"
         securityContext:
           runAsUser: 0
         volumeMounts:
@@ -33,8 +27,6 @@ spec:
             name: var-run-dbus
           - mountPath: /etc/os-release
             name: etc-os-release
-          - mountPath: /usr/local/bin/update-agent # XXX: 🦖
-            name: update-agent
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -48,9 +40,6 @@ spec:
       - name: var-run-dbus
         hostPath:
           path: /var/run/dbus
-      - name: update-agent
-        hostPath:
-          path: /usr/local/bin/update-agent
       - name: etc-os-release
         hostPath:
           path: /etc/os-release
