@@ -27,8 +27,8 @@ spec:
         securityContext:
           runAsUser: 0
         volumeMounts:
-          - mountPath: /var/run/dbus
-            name: var-run-dbus
+          - mountPath: /var/run/dbus/system_bus_socket
+            name: var-run-dbus-socket
           - mountPath: /etc/os-release
             name: etc-os-release
         env:
@@ -41,9 +41,10 @@ spec:
         operator: Exists
         effect: NoSchedule
       volumes:
-      - name: var-run-dbus
+      - name: var-run-dbus-socket
         hostPath:
-          path: /var/run/dbus
+          path: /var/run/dbus/system_bus_socket
+          type: Socket
       - name: etc-os-release
         hostPath:
           path: /etc/os-release
