@@ -34,7 +34,7 @@ spec:
             type: "spc_t"
             user: "system_u"
         volumeMounts:
-          - mountPath: /var/run/dbus/system_bus_socket
+          - mountPath: /var/run/dbus/
             name: var-run-dbus
           - mountPath: /etc/os-release
             name: etc-os-release
@@ -50,8 +50,7 @@ spec:
       volumes:
       - name: var-run-dbus
         hostPath:
-          path: /var/run/dbus/system_bus_socket
-          type: Socket
+          path: /var/run/dbus/
       - name: etc-os-release
         hostPath:
           path: /etc/os-release
