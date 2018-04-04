@@ -19,16 +19,23 @@ spec:
         image: quay.io/spiketesting/atomic-update-operator:v0.0.0
         imagePullPolicy: IfNotPresent
         command:
-        command:
         - "/bin/update-agent"
         args:
         - "-node"
         - "localhost"
         securityContext:
           runAsUser: 0
+          allowPrivilegeEscalation: true
+          capabilities:
+            add: ["SYS_ADMIN"]
+          seLinuxOptions:
+            level: "s0:c0"
+            role: "system_r"
+            type: "spc_t"
+            user: "system_u"
         volumeMounts:
           - mountPath: /var/run/dbus/system_bus_socket
-            name: var-run-dbus-socket
+            name: var-run-dbus
           - mountPath: /etc/os-release
             name: etc-os-release
         env:
@@ -41,7 +48,7 @@ spec:
         operator: Exists
         effect: NoSchedule
       volumes:
-      - name: var-run-dbus-socket
+      - name: var-run-dbus
         hostPath:
           path: /var/run/dbus/system_bus_socket
           type: Socket
