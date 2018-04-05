@@ -25,14 +25,8 @@ spec:
         - "localhost"
         securityContext:
           runAsUser: 0
-          allowPrivilegeEscalation: true
-          capabilities:
-            add: ["SYS_ADMIN"]
           seLinuxOptions:
-            level: "s0:c0"
-            role: "system_r"
             type: "spc_t"
-            user: "system_u"
         volumeMounts:
           - mountPath: /var/run/dbus/
             name: var-run-dbus
