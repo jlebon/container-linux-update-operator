@@ -188,7 +188,7 @@ func (k *Klocksmith) process(stop <-chan struct{}) error {
 	glog.Info("Node drained, rebooting")
 
 	// reboot
-	//k.lc.Reboot(false) // testing this in an `oc cluster up`, so let's stop short of rebooting
+	k.lc.Reboot(false)
 
 	// cross fingers
 	sleepOrDone(24*7*time.Hour, stop)
@@ -205,7 +205,7 @@ func (k *Klocksmith) updateStatusCallback(s updateengine.Status) {
 		constants.AnnotationStatus:          s.CurrentStatus,
 		constants.AnnotationLastCheckedTime: fmt.Sprintf("%d", s.LastCheckedTime),
 		constants.AnnotationNewVersion:      s.NewVersion,
-		constants.AnnotationNewChecksum:      s.NewChecksum,
+		constants.AnnotationNewChecksum:     s.NewChecksum,
 	}
 
 	labels := map[string]string{}
