@@ -30,8 +30,7 @@ const (
 	dbusIfaceOS       = "org.projectatomic.rpmostree1.OS"
 	dbusIfaceSysroot  = "org.projectatomic.rpmostree1.Sysroot"
 	signalBuffer      = 32 // TODO(bp): What is a reasonable value here?
-	//statePollInterval = 1 * time.Hour
-	statePollInterval = 15 * time.Second // for hacking
+	statePollInterval = 1 * time.Hour
 )
 
 type Client struct {
