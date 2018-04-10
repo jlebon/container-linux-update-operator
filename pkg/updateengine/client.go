@@ -17,11 +17,11 @@ package updateengine
 import (
 	"fmt"
 	"os"
-	"time"
 	"strconv"
+	"time"
 
-	"github.com/golang/glog"
 	"github.com/godbus/dbus"
+	"github.com/golang/glog"
 )
 
 const (
@@ -33,7 +33,7 @@ const (
 )
 
 type Client struct {
-	conn  *dbus.Conn
+	conn   *dbus.Conn
 	osPath dbus.ObjectPath
 }
 
@@ -83,11 +83,9 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// ReceiveStatuses receives signal messages from dbus and sends them as Statuses
-// on the rcvr channel, until the stop channel is closed. An attempt is made to
-// get the initial status and send it on the rcvr channel before receiving
-// starts.
-func (c *Client) ReceiveStatuses(rcvr chan Status, stop <-chan struct{}) {
+// sendStatusUpdate gets the status via GetStatus and passes it along to the
+// receiver channel. If any error occurs it is logged.
+func (c *Client) sendStatusUpdate(rcvr chan Status) {
 	// if there is an error getting the current status, just log it and
 	// move onto the main loop.
 	st, err := c.GetStatus()
@@ -96,7 +94,14 @@ func (c *Client) ReceiveStatuses(rcvr chan Status, stop <-chan struct{}) {
 	} else {
 		rcvr <- st
 	}
+}
 
+// ReceiveStatuses receives signal messages from dbus and sends them as Statuses
+// on the rcvr channel, until the stop channel is closed. An attempt is made to
+// get the initial status and send it on the rcvr channel before receiving
+// starts.
+func (c *Client) ReceiveStatuses(rcvr chan Status, stop <-chan struct{}) {
+	c.sendStatusUpdate(rcvr)
 	// XXX: We could probably increase the interval even more if we use
 	// filesystem notifications instead if we want to narrow the window between
 	// deployment staging and reboot.
@@ -106,12 +111,7 @@ func (c *Client) ReceiveStatuses(rcvr chan Status, stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-t:
-			st, err := c.GetStatus()
-			if err != nil {
-				glog.Warningf("error getting rpm-ostree status: %v", err)
-			} else {
-				rcvr <- st
-			}
+			c.sendStatusUpdate(rcvr)
 		}
 	}
 }
