@@ -28,7 +28,6 @@ const (
 
 type Status struct {
 	CurrentStatus string
-	LastCheckedTime uint64
 	// Let's just proxy "version" and "checksum" for now. AFAICT, this is only
 	// for the benefit of a sysadmin doing `oc describe node`.
 	NewVersion string
@@ -42,9 +41,6 @@ func NewStatus(cachedUpdate map[string]dbus.Variant) (s Status) {
 	}
 
 	checksum := cachedUpdate["checksum"].Value().(string)
-	lastChecked := cachedUpdate["update-timestamp"].Value().(uint64)
-	// convert to seconds to be easier to consume
-	lastChecked /= 1000000
 
 	versionProp, ok := cachedUpdate["version"]
 	var version string
@@ -54,12 +50,12 @@ func NewStatus(cachedUpdate map[string]dbus.Variant) (s Status) {
 
 	staged := cachedUpdate["staged"].Value().(bool)
 	if !staged {
-		return Status{RpmOstreeUpdateAvailable, lastChecked, version, checksum}
+		return Status{RpmOstreeUpdateAvailable, version, checksum}
 	}
-	return Status{RpmOstreeUpdateStaged, lastChecked, version, checksum}
+	return Status{RpmOstreeUpdateStaged, version, checksum}
 }
 
 func (s *Status) String() string {
-	return fmt.Sprintf("CurrentStatus=%s LastChecked=%d NewVersion=%s NewChecksum=%s",
-	                   s.CurrentStatus, s.LastCheckedTime, s.NewVersion, s.NewChecksum)
+	return fmt.Sprintf("CurrentStatus=%s NewVersion=%s NewChecksum=%s",
+	                   s.CurrentStatus, s.NewVersion, s.NewChecksum)
 }

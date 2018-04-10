@@ -203,7 +203,6 @@ func (k *Klocksmith) updateStatusCallback(s updateengine.Status) {
 	// update our status
 	anno := map[string]string{
 		constants.AnnotationStatus:          s.CurrentStatus,
-		constants.AnnotationLastCheckedTime: fmt.Sprintf("%d", s.LastCheckedTime),
 		constants.AnnotationNewVersion:      s.NewVersion,
 		constants.AnnotationNewChecksum:     s.NewChecksum,
 	}
